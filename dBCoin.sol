@@ -126,7 +126,6 @@ contract dBCoin {
         address ar =address(a);
         deployedRoya[fhash].exist = true;
         deployedRoya[fhash].roya = ar;
-        //royaltyAcc[ar].creator = _creator;
         royaltyAcc[ar].exist = true;
         royaltyAcc[ar].timetoken = 0;
         royaltyAcc[ar].transmitting_time = 0;
@@ -165,7 +164,7 @@ contract dBCoin {
         RoyaltiesBalance storage p2 = royaltyAcc[royalty];
         ReleasedB storage p3 = releaseRecord[lastSettlementDay+1];
         rechargeA(msg.sender);
-        doM1Settlement(royalty);      
+        doM1Settlement(royalty);  
         if (p1.balance - secs>0) {
             p1.balance -= secs;
             p3.time += secs;
@@ -223,6 +222,26 @@ contract dBCoin {
 
     }
 
+    function bplaytest(address roya, address broker, address _sub, uint secs) public returns(uint) {
+        Sub storage p1 = subscriptions[_sub];
+        if (!p1.exist) return 1;
+        rechargeA(_sub);        
+        RoyaltiesBalance storage p2 = royaltyAcc[roya];
+        if (!p2.exist) return 2;
+        doM1Settlement(roya);
+        uint settled = doM2BSettlement(roya, broker);
+        if(p1.balance > secs) {
+            ReleasedB storage p3 = releaseRecord[lastSettlementDay];
+            TransmitBalance storage pb = transmitUser[roya][broker];
+            p1.balance -= secs;
+            p2.timetoken += secs;
+            p3.time += secs;
+            p2.transmitting_time += secs;
+            pb.timet1 += secs;
+            return 16 + settled;
+        } else return 0x04;
+    }
+
     function rechargeA(address subs) internal {
         Sub storage p1 = subscriptions[subs];
         if (lastSettlementDay - p1.lastRechargeDay > 0) {
@@ -266,25 +285,28 @@ contract dBCoin {
         
     }
 
-    function doM2BSettlement(address _roya, address _broker) internal {
+    function doM2BSettlement(address _roya, address _broker) internal returns(uint) {
         TransmitBalance storage pb = transmitUser[_roya][_broker];
         RoyaltiesBalance storage prb = royaltyAcc[_roya];
         if ( 1 - pb.lastSettlement == 1) {
             pb.lastSettlement = 1;
         }
-
+        uint res = 0;
         if (pb.lastSettlement < prb.lastSettlement) {
             RoyaSettlementHist storage pr = royaHist[_roya][pb.lastSettlement];
             if (pr.timetoken + pr.transmitting_time > 0) {
                 uint coins = uint(pb.timet1 * pr.dbcoin / (pr.timetoken+pr.transmitting_time));
                 pb.dbcoin += coins;
                 transmitUserAcc[_broker].dbcoin += coins;    
+                res = coins;
             }
             pb.timet2 = pb.timet1;
             pb.timet1 = 0;
             pb.lastSettlement = lastSettlementDay;
-
-        } 
+            return res;
+        } else {
+            return 0;
+        }
         
     }
 
@@ -342,10 +364,10 @@ contract dBCoin {
         (int8[] memory _shares) = abi.decode(output2, (int8[]));
 
         for (uint i=0; i<_holders.length; i++) {
-            address crt = _holders[i]; 
+            address crt = _holders[i]; //
             CreatorAcc storage pa = creator[crt];
             pa.dbcoin += uint(prb.dbcoin * uint(_shares[i]) / 100);//
-        } 
+        } //
         if (_shares[0] > 0) {
             prb.dbcoin = 0;
             return 0x0f;
