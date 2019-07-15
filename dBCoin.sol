@@ -315,10 +315,12 @@ contract dBCoin {
         if (now - lastSettlementTime >= 600 ) {
             ReleasedB storage ps = releaseRecord[lastSettlementDay];
             if (ps.distribute > 0) {
+                uint lastvalue = ps.distribute;
                 releaseRecord[lastSettlementDay].cleared = true;
                 lastSettlementDay += 1;
                 lastSettlementTime = now;
                 releaseRecord[lastSettlementDay].cleared = false;
+                releaseRecord[lastSettlementDay].distribute = lastvalue;
                 return true;
             }            
         } else return false;
