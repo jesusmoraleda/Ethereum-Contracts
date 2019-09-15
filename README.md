@@ -15,3 +15,5 @@ This is the main contract code used by the SoundArio project. We are constantly 
 ### V0.5.1 update@20190715
 
 ### V0.6 update@20190815
+
+### V0.6.1 update@20190915
