@@ -1,5 +1,6 @@
 pragma solidity >=0.5.0;
 
+
 library SdArio {
     struct Creators {
         int8[] shares;
@@ -10,6 +11,7 @@ library SdArio {
 
 contract Royalties { 
     dBCoin distridb;
+    Subscription subc;
     address[] public creators;
     int8[] public shares;
     bytes32 public filehash;
@@ -21,15 +23,38 @@ contract Royalties {
         shares = _shares;
         msize = _creators.length;
         owner = msg.sender;
-    } 
+    }
     
-    function play(uint256 secs) public returns (bytes1) {        
+    function play(uint256 secs) public returns (bytes1) {
         if (distridb.timeCheck(msg.sender, secs)) {
             distridb.play(msg.sender,secs);
             return 0xf0;
         } else return 0x01;
         
     }
+
+    function reassign(address[] memory _creators, int8[] memory _shares) public {
+        if (msg.sender != owner) {
+            return;
+        }
+        creators = _creators;
+        shares = _shares;
+    }
+
+    function setCoincon(dBCoin _dbc) public {
+        if (msg.sender != owner) {
+            return;
+        }
+        distridb = _dbc;
+    }
+
+    function setSubcon(Subscription _subc) public {
+        if (msg.sender != owner) {
+            return;
+        }
+        subc = _subc;
+    }
+
 
     function getShareList() public view returns (int8[] memory) {
         return shares;
@@ -41,18 +66,51 @@ contract Royalties {
 
 }
 
+contract Subscription {
+    struct Subs {
+        bool valid;
+    }
+
+    address owner;
+    mapping(address => Subs) public subs;
+    constructor() public {
+        owner = msg.sender;
+    }
+
+    function enable(address _sub) public {
+        if (msg.sender != owner) return;
+        Subs storage s = subs[_sub];
+        s.valid = true;
+    }
+
+    function disable(address _sub) public {
+        if (msg.sender != owner) return;
+        Subs storage s = subs[_sub];
+        s.valid = false;
+    }
+
+    function query(address _sub) public view returns (bool) {
+        if (subs[_sub].valid) {
+            return true;
+        } else {
+            return false;
+        }
+    }
+}
+
 contract dBCoin {
     using SafeMath for uint256;
     address owner;
     uint256 public lastSettlementTime;
     uint256 public lastSettlementDay;
     uint256 maxTimePerDay = 86400;
-    Royalties royaltycontract;
+    Royalties royaltycon;
+    Subscription subc;
 
     constructor() public {
         owner = msg.sender;
-        lastSettlementDay = 1; 
-        lastSettlementTime = now; 
+        lastSettlementDay = 1;
+        lastSettlementTime = now;
     }
 
     struct CreatorAcc {
@@ -138,14 +196,37 @@ contract dBCoin {
         return ar;
     }
 
+    function migrateRoyalty(bytes32 fhash, address _roya) public {
+        if (msg.sender != owner) return;
+        RoyaIndex storage p = deployedRoya[fhash];
+        if (p.exist) return;
+
+        deployedRoya[fhash].exist = true;
+        deployedRoya[fhash].roya = _roya;
+        royaltyAcc[_roya].exist = true;
+        royaltyAcc[_roya].timetoken = 0;
+        royaltyAcc[_roya].transmitting_time = 0;
+        royaltyAcc[_roya].cdbcoin = 0;
+        royaltyAcc[_roya].tdbcoin = 0;
+        royaltyAcc[_roya].totalcoin = 0;
+        royaltyAcc[_roya].lastSettlement = lastSettlementDay;
+        royaltyAcc[_roya].lastSettlement2 = lastSettlementDay;
+    }
+
+
     function queryCoin(address _creator) external view returns (uint) {
         return creator[_creator].dbcoin;
     }
 
+    function setSub(Subscription _subc) public {
+        if (msg.sender != owner) return;
+        subc = _subc;
+    }
 
     function enableSubsAddr(address subs) external returns (bool) {
         if (msg.sender != owner) return false;
-        uint256 inter = now.sub(lastSettlementTime);
+        uint256 n = now;
+        uint256 inter = n.sub(lastSettlementTime);
         if (inter > maxTimePerDay) {
             subscriptions[subs].balance = maxTimePerDay;
         } else {
@@ -163,11 +244,18 @@ contract dBCoin {
 
     function play(address royalty, uint256 secs) public returns (bytes1) {
         Sub storage p1 = subscriptions[msg.sender];
-        if (!p1.exist) return 0x02;
+        if (!p1.exist) {
+            if (subc.query(msg.sender)) {
+                subscriptions[msg.sender].exist = true;
+                subscriptions[msg.sender].balance = maxTimePerDay;
+            } else {
+                return 0x02;
+            }
+        }
         RoyaltiesBalance storage p2 = royaltyAcc[royalty];
         ReleasedB storage p3 = releaseRecord[lastSettlementDay.add(1)];
         rechargeA(msg.sender);
-        doM1Settlement(royalty);       
+        doM1Settlement(royalty);
         if (p1.balance.sub(secs)>0) {
             p1.balance = p1.balance.sub(secs);
             p3.time = p3.time.add(secs);
@@ -179,6 +267,12 @@ contract dBCoin {
     function allocate(address _to, uint256 _coin) public returns(uint) {
         if (msg.sender != owner) return 0;
         creator[_to].dbcoin = creator[_to].dbcoin.add(_coin);
+        return _coin;
+    }
+
+    function allocatebroker(address _to, uint256 _coin) public returns(uint) {
+        if (msg.sender != owner) return 0;
+        transmitUserAcc[_to].dbcoin = transmitUserAcc[_to].dbcoin.add(_coin);
         return _coin;
     }
     
@@ -196,7 +290,7 @@ contract dBCoin {
         RoyaltiesBalance storage p2 = royaltyAcc[royalty];
         ReleasedB storage p3 = releaseRecord[lastSettlementDay];
         rechargeA(sub);
-        doM1Settlement(royalty); 
+        doM1Settlement(royalty);
     
         if (p1.balance.sub(secs)>0) {
             p1.balance = p1.balance.sub(secs);
@@ -212,7 +306,7 @@ contract dBCoin {
         if (msg.sender != owner) return 0x01;
         Sub storage p1 = subscriptions[_sub];
         if (!p1.exist) return 0x02;
-        rechargeA(_sub);        
+        rechargeA(_sub);
         RoyaltiesBalance storage p2 = royaltyAcc[roya];
         if (!p2.exist) return 0x03;
         
@@ -234,7 +328,7 @@ contract dBCoin {
     function bplaytest(address roya, address broker, address _sub, uint256 secs) public returns(uint) {
         Sub storage p1 = subscriptions[_sub];
         if (!p1.exist) return 1;
-        rechargeA(_sub);        
+        rechargeA(_sub);
         RoyaltiesBalance storage p2 = royaltyAcc[roya];
         if (!p2.exist) return 2;
         doM1Settlement(roya);
@@ -326,7 +420,7 @@ contract dBCoin {
             if (pr.timetoken.add(pr.transmitting_time) > 0) {
                 uint256 coins = uint(pb.timet1.mul(pr.dbcoin.div(pr.timetoken.add(pr.transmitting_time))));
                 pb.dbcoin += coins;
-                transmitUserAcc[_broker].dbcoin += coins;    
+                transmitUserAcc[_broker].dbcoin += coins;
             }
             pb.timet2 = pb.timet1;
             pb.timet1 = 0;
@@ -337,7 +431,8 @@ contract dBCoin {
 
     
     function startCurrentSettlement() public returns(bool){
-        if (now.sub(lastSettlementTime) >= 600 ) {
+        uint256 n = now;
+        if (n.sub(lastSettlementTime) >= 600 ) {
             ReleasedB storage ps = releaseRecord[lastSettlementDay];
             if (ps.distribute > 0) {
                 uint256 lastvalue = ps.distribute;
@@ -372,8 +467,9 @@ contract dBCoin {
 
     function settleRoyaShareList(address[] memory _creators, uint[] memory _shares, Royalties _roya) public returns (bytes1) {
         if (msg.sender != owner) return 0x01;
+        //
         RoyaltiesBalance storage prb = royaltyAcc[address(_roya)];
-        for (uint256 i = 0; i< _shares.length; i = i.add(1)) {
+        for (uint256 i = 0; i < _shares.length; i = i.add(1)) {
             CreatorAcc storage pa = creator[_creators[i]];
             pa.dbcoin += uint(prb.cdbcoin.div(100).mul(_shares[i]));
             
@@ -384,14 +480,11 @@ contract dBCoin {
 
     function settleRoyaShareBatch(Royalties _roya) public returns (bytes1) {
         RoyaltiesBalance storage prb = royaltyAcc[address(_roya)];
-        (bool success, bytes memory output) = address(_roya).call("getHolderList()");
-        require(success);
-        (address[] memory _holders) = abi.decode(output, (address[]));
-        (bool success2, bytes memory output2) = address(_roya).call("getShareList()");
-        require(success2);
-        (int8[] memory _shares) = abi.decode(output2, (int8[]));
+        address[] memory _holders = _roya.getHolderList();
 
-        for (uint256 i=0; i<_holders.length; i++) {
+        int8[] memory _shares = _roya.getShareList();
+
+        for (uint256 i = 0; i < _holders.length; i++) {
             address crt = _holders[i];
             CreatorAcc storage pa = creator[crt];
             pa.dbcoin += uint(prb.cdbcoin * uint(_shares[i]) / 100);
@@ -402,7 +495,6 @@ contract dBCoin {
         } else {
             return 0x01;
         }
-        
     }
 
     function querySettlement(uint256 f) public view returns(uint) {

@@ -2,7 +2,7 @@
 
 ## About
 
-This is the main contract code used by the SoundArio project. We are constantly developing the platform and regularly release our updates.
+This is the main Ethereum contract code used by the SoundArio project. We are constantly developing the platform and regularly release our updates.
 
 ### V0.1 update@20190127
 
@@ -17,3 +17,5 @@ This is the main contract code used by the SoundArio project. We are constantly 
 ### V0.6 update@20190815
 
 ### V0.6.1 update@20190915
+
+### V0.7.0 update@20191015
