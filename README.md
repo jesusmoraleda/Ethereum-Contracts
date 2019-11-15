@@ -1,4 +1,4 @@
-# Soundario Contracts OpenSource
+# Soundario Ethereum Contracts OpenSource
 
 ## About
 
@@ -19,3 +19,5 @@ This is the main Ethereum contract code used by the SoundArio project. We are co
 ### V0.6.1 update@20190915
 
 ### V0.7.0 update@20191015
+
+### V0.8.0 update@20191115

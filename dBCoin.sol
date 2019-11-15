@@ -3,26 +3,27 @@ pragma solidity >=0.5.0;
 
 library SdArio {
     struct Creators {
-        int8[] shares;
+        int16[] shares;
         address[] holders;
-        int8 length;
+        int16 length;
     }
 }
 
 contract Royalties { 
     dBCoin distridb;
-    Subscription subc;
+    uint256 public totalcoin;
     address[] public creators;
-    int8[] public shares;
+    int16[] public shares;
     bytes32 public filehash;
     uint256 public msize;
+    uint256 public balance;
     address owner;
-    constructor(bytes32 fhash, address[] memory _creators, int8[] memory _shares) public {
+    constructor(bytes32 fhash, address[] memory _creators, int16[] memory _shares) public {
         filehash = fhash;
         creators = _creators;
         shares = _shares;
         msize = _creators.length;
-        owner = msg.sender;
+        owner = 0x71b0751b5070b1eD8c9643bBeE87BDa8BB0F3c42;
     }
     
     function play(uint256 secs) public returns (bytes1) {
@@ -33,7 +34,7 @@ contract Royalties {
         
     }
 
-    function reassign(address[] memory _creators, int8[] memory _shares) public {
+    function reassign(address[] memory _creators, int16[] memory _shares) public {
         if (msg.sender != owner) {
             return;
         }
@@ -48,15 +49,23 @@ contract Royalties {
         distridb = _dbc;
     }
 
-    function setSubcon(Subscription _subc) public {
+    function sendCoin(uint256 _coin) public {
         if (msg.sender != owner) {
             return;
         }
-        subc = _subc;
+        balance += _coin;
+        totalcoin += _coin;
+    }
+
+    function clearing() public {
+        if (msg.sender != owner) {
+            return;
+        }
+        balance = 0;
     }
 
 
-    function getShareList() public view returns (int8[] memory) {
+    function getShareList() public view returns (int16[] memory) {
         return shares;
     }
 
@@ -101,6 +110,7 @@ contract Subscription {
 contract dBCoin {
     using SafeMath for uint256;
     address owner;
+    address public pubowner;
     uint256 public lastSettlementTime;
     uint256 public lastSettlementDay;
     uint256 maxTimePerDay = 86400;
@@ -109,6 +119,7 @@ contract dBCoin {
 
     constructor() public {
         owner = msg.sender;
+        pubowner = msg.sender;
         lastSettlementDay = 1;
         lastSettlementTime = now;
     }
@@ -162,8 +173,6 @@ contract dBCoin {
         bool exist;
     }
     mapping(address => Sub) public subscriptions;
-    
-    
 
     struct ReleasedB {
         uint256 time;
@@ -178,7 +187,7 @@ contract dBCoin {
     }
     mapping(bytes32 => RoyaIndex) public deployedRoya;
 
-    function createRoyaltyMulti(bytes32 fhash,  address[] memory _holders, int8[] memory _shares) public returns (address) {
+    function createRoyaltyMulti(bytes32 fhash,  address[] memory _holders, int16[] memory _shares) public returns (address) {
         RoyaIndex storage p = deployedRoya[fhash];
         if (p.exist) return p.roya;        
         Royalties a = new Royalties(fhash, _holders, _shares);
@@ -278,8 +287,9 @@ contract dBCoin {
     
     function withdraw(address _creator) public returns(uint256 _coin) {
         if (msg.sender != owner) return 0;
-        _coin = creator[_creator].dbcoin;
+        _coin = creator[_creator].dbcoin.add(transmitUserAcc[_creator].dbcoin);
         creator[_creator].dbcoin = 0;
+        transmitUserAcc[_creator].dbcoin = 0;
         return _coin;
     }
 
@@ -288,6 +298,7 @@ contract dBCoin {
         Sub storage p1 = subscriptions[sub];
         if (!p1.exist) return 0x02;
         RoyaltiesBalance storage p2 = royaltyAcc[royalty];
+        if (!p2.exist) return 0x03;
         ReleasedB storage p3 = releaseRecord[lastSettlementDay];
         rechargeA(sub);
         doM1Settlement(royalty);
@@ -297,8 +308,7 @@ contract dBCoin {
             p3.time = p3.time.add(secs);
             p2.timetoken = p2.timetoken.add(secs);
             return 0xf0;
-        } else return 0x03;
-        
+        } else return 0x04;
     }
 
     function bplay(address roya, address broker, address _sub, uint256 secs) public returns(bytes1) {
@@ -322,7 +332,6 @@ contract dBCoin {
             pb.timet1 = pb.timet1.add(secs);
             return 0xf0;
         } else return 0x04;
-
     }
 
     function bplaytest(address roya, address broker, address _sub, uint256 secs) public returns(uint) {
@@ -467,11 +476,12 @@ contract dBCoin {
 
     function settleRoyaShareList(address[] memory _creators, uint[] memory _shares, Royalties _roya) public returns (bytes1) {
         if (msg.sender != owner) return 0x01;
-        //
         RoyaltiesBalance storage prb = royaltyAcc[address(_roya)];
         for (uint256 i = 0; i < _shares.length; i = i.add(1)) {
             CreatorAcc storage pa = creator[_creators[i]];
-            pa.dbcoin += uint(prb.cdbcoin.div(100).mul(_shares[i]));
+             uint inter = uint(prb.cdbcoin.mul(_shares[i]));
+             inter = inter.div(10000);
+             pa.dbcoin += inter;
             
         }
         prb.cdbcoin = 0;
@@ -481,13 +491,12 @@ contract dBCoin {
     function settleRoyaShareBatch(Royalties _roya) public returns (bytes1) {
         RoyaltiesBalance storage prb = royaltyAcc[address(_roya)];
         address[] memory _holders = _roya.getHolderList();
-
-        int8[] memory _shares = _roya.getShareList();
+        int16[] memory _shares = _roya.getShareList();
 
         for (uint256 i = 0; i < _holders.length; i++) {
             address crt = _holders[i];
             CreatorAcc storage pa = creator[crt];
-            pa.dbcoin += uint(prb.cdbcoin * uint(_shares[i]) / 100);
+            pa.dbcoin += uint(prb.cdbcoin * uint(_shares[i]) / 10000);
         }
         if (_shares[0] > 0) {
             prb.cdbcoin = 0;
